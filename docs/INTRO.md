@@ -52,10 +52,15 @@ Git → VS Code → Claude Code → CC Switch（换第三方模型）。
 ### 快速开始
 
 ```powershell
-git clone https://gitee.com/tyw-0625/claude-code-oneclick.git
+git clone https://github.com/TYW-625/claude-code-oneclick.git
 cd claude-code-oneclick
 .\install.bat
 ```
+
+国内网络克隆慢时用 Gitee 镜像：<https://gitee.com/tyw-0625/claude-code-oneclick>
+
+> 仓库地址：GitHub <https://github.com/TYW-625/claude-code-oneclick>
+> ｜ Gitee <https://gitee.com/tyw-0625/claude-code-oneclick>
 
 或者：
 

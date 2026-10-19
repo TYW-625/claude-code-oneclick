@@ -2,6 +2,9 @@
 
 一个把 Claude Code 的 Windows 安装流程打包成“双击即装”的脚本。
 
+- GitHub（主仓库）：<https://github.com/TYW-625/claude-code-oneclick>
+- Gitee（国内镜像）：<https://gitee.com/tyw-0625/claude-code-oneclick>
+
 流程参考 B 站 UP 主 **木子不写代码** 的
 [《Claude Code 零基础终极教程》](https://www.bilibili.com/video/BV1TTR8BaEnL)：
 Git → VS Code → Claude Code → CC Switch（换第三方模型）。
@@ -31,9 +34,15 @@ Git → VS Code → Claude Code → CC Switch（换第三方模型）。
 ### 方式二：PowerShell
 
 ```powershell
-git clone https://gitee.com/tyw-0625/claude-code-oneclick.git
+git clone https://github.com/TYW-625/claude-code-oneclick.git
 cd claude-code-oneclick
 powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+国内网络访问 GitHub 慢时，改用 Gitee 镜像：
+
+```powershell
+git clone https://gitee.com/tyw-0625/claude-code-oneclick.git
 ```
 
 ### 常用参数
@@ -79,6 +88,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -WithCLI -Yes
 
 ## 国内网络
 
+- 仓库本身在 Gitee 有镜像，克隆慢时可以从 <https://gitee.com/tyw-0625/claude-code-oneclick> 拉。
 - GitHub 直连失败时，脚本会自动尝试 `gh-proxy.com` 和 `ghproxy.net` 镜像。
 - winget 下载慢属于正常现象，脚本会在失败后改用官方安装包。
 - CC Switch 只从 GitHub Release 下载，不信任任何第三方下载站。
