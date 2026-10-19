@@ -31,7 +31,7 @@ Git → VS Code → Claude Code → CC Switch（换第三方模型）。
 ### 方式二：PowerShell
 
 ```powershell
-git clone https://github.com/TYW-625/claude-code-oneclick.git
+git clone https://gitee.com/tyw-0625/claude-code-oneclick.git
 cd claude-code-oneclick
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
