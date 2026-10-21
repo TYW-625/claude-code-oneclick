@@ -227,6 +227,47 @@ function Invoke-WingetInstall {
 
 # ---------------------------------------------------------------- Git
 
+function Add-UserPath {
+    # 只写用户级 PATH，不需要管理员权限。
+    param([string]$Directory)
+
+    if (-not $Directory -or -not (Test-Path $Directory)) { return }
+
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (-not $userPath) { $userPath = '' }
+    $parts = @($userPath -split ';' | Where-Object { $_ })
+    if ($parts -notcontains $Directory) {
+        $parts += $Directory
+        [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User')
+    }
+
+    if (($env:Path -split ';') -notcontains $Directory) {
+        $env:Path = $env:Path.TrimEnd(';') + ';' + $Directory
+    }
+}
+
+function Get-GitMirrorUrl {
+    # 华为云镜像，国内可直连。MinGit 是免安装的 zip，解压即用，不需要管理员权限。
+    $mirror = 'https://mirrors.huaweicloud.com/git-for-windows/'
+    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { '64-bit' }
+    $fallback = 'v2.56.0.windows.2/MinGit-2.56.0.2-' + $arch + '.zip'
+
+    try {
+        $resp = Invoke-WebRequest -Uri $mirror -UseBasicParsing -TimeoutSec 20
+        $versions = @([regex]::Matches([string]$resp.Content, 'v(\d+\.\d+\.\d+\.windows\.\d+)/') |
+            ForEach-Object { $_.Groups[1].Value } |
+            Select-Object -Unique |
+            Sort-Object { [version]($_ -replace '\.windows\.', '.') } -Descending)
+        if ($versions.Count -gt 0) {
+            $v = $versions[0]
+            $tag = ($v -replace '^v', '') -replace '\.windows\.', '.'
+            return ($mirror + 'v' + $v + '/MinGit-' + $tag + '-' + $arch + '.zip')
+        }
+    } catch { }
+
+    return ($mirror + $fallback)
+}
+
 function Install-Git {
     $version = Get-ToolVersion 'git' '--version'
     if ($version) {
@@ -241,24 +282,26 @@ function Install-Git {
         return $true
     }
 
-    $ok = Invoke-WingetInstall 'Git.Git' 'user'
-    if (-not $ok) { $ok = Invoke-WingetInstall 'Git.Git' $null }
-
-    $version = Get-ToolVersion 'git' '--version'
-    if (-not $version) {
-        Write-Warn 'winget 没有装上，尝试从 GitHub 下载安装包（走镜像）'
-        $release = Get-GitHubRelease 'git-for-windows/git'
-        $asset = $null
-        if ($release) {
-            $asset = $release.assets | Where-Object { $_.name -match '^Git-.*64-bit\.exe$' } | Select-Object -First 1
-        }
-        if ($asset) {
-            $installer = Join-Path $env:TEMP $asset.name
-            if (Save-FileWithMirrors -Urls (Get-AssetUrls $asset) -Destination $installer) {
-                Write-Info '运行 Git 安装程序（可能弹出 UAC）...'
-                Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/NORESTART', '/NOCANCEL', '/SP-' -Wait
+    # 直接走便携版 MinGit：解压到用户目录并写入用户 PATH，
+    # 全程不弹 UAC，没有管理员权限的电脑也能装。
+    $url = Get-GitMirrorUrl
+    Write-Info ('下载 Git 便携版: ' + $url)
+    $zipPath = Join-Path $env:TEMP 'mingit.zip'
+    if (Save-FileWithMirrors -Urls @($url) -Destination $zipPath) {
+        $installDir = Join-Path $env:LOCALAPPDATA 'Programs\Git'
+        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+        Write-Info ('解压到: ' + $installDir)
+        try {
+            Expand-Archive -Path $zipPath -DestinationPath $installDir -Force
+            $gitCmdDir = Join-Path $installDir 'cmd'
+            if (Test-Path (Join-Path $gitCmdDir 'git.exe')) {
+                Add-UserPath $gitCmdDir
                 Update-SessionPath
+            } else {
+                Write-Warn '解压后没有找到 cmd\git.exe，压缩包可能不完整'
             }
+        } catch {
+            Write-Warn ('解压失败: ' + $_.Exception.Message)
         }
     }
 
@@ -293,12 +336,18 @@ function Install-VSCode {
         return $true
     }
 
-    $ok = Invoke-WingetInstall 'Microsoft.VisualStudioCode' 'user'
+    [void](Invoke-WingetInstall 'Microsoft.VisualStudioCode' 'user')
 
-    Update-SessionPath
-    $codeCmd = Get-CodeCommand
+    # winget 报成功后，code.cmd 落盘可能还要几秒，重试一会儿再下结论。
+    $codeCmd = $null
+    for ($i = 0; $i -lt 15 -and -not $codeCmd; $i++) {
+        Update-SessionPath
+        $codeCmd = Get-CodeCommand
+        if (-not $codeCmd) { Start-Sleep -Milliseconds 800 }
+    }
+
     if (-not $codeCmd) {
-        Write-Warn 'winget 没有装上，改为官方安装包'
+        Write-Warn '未找到 code 命令，改为官方安装包'
         $installer = Join-Path $env:TEMP 'vscode-user-setup.exe'
         $urls = @(
             'https://update.code.visualstudio.com/latest/win32-x64-user/stable',
@@ -307,7 +356,11 @@ function Install-VSCode {
         if (Save-FileWithMirrors -Urls $urls -Destination $installer) {
             Write-Info '运行 VS Code 安装程序...'
             Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/NORESTART', '/MERGETASKS=!runcode' -Wait
-            Update-SessionPath
+            for ($i = 0; $i -lt 15 -and -not $codeCmd; $i++) {
+                Update-SessionPath
+                $codeCmd = Get-CodeCommand
+                if (-not $codeCmd) { Start-Sleep -Milliseconds 800 }
+            }
         }
     }
 
@@ -548,8 +601,18 @@ function Install-CCSwitch {
     $version = [string]$release.tag_name
     Write-Info ('最新版本: ' + $version)
 
-    $zipAsset = $release.assets | Where-Object { $_.name -match 'Windows.*Portable.*\.zip$' -or $_.name -match 'portable.*windows.*\.zip$' } | Select-Object -First 1
-    $msiAsset = $release.assets | Where-Object { $_.name -match 'Windows.*\.msi$' } | Select-Object -First 1
+    # 按本机架构选包。发布页里 arm64 排在前面，不能用 * 通配后取第一个，
+    # 否则 x64 机器会下到 arm64 的包，装了也跑不起来。
+    $isArm = ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64')
+    if ($isArm) {
+        $zipPattern = 'Windows-arm64-Portable\.zip$'
+        $msiPattern = 'Windows-arm64\.msi$'
+    } else {
+        $zipPattern = 'Windows-Portable\.zip$'
+        $msiPattern = 'Windows\.msi$'
+    }
+    $zipAsset = $release.assets | Where-Object { $_.name -match $zipPattern } | Select-Object -First 1
+    $msiAsset = $release.assets | Where-Object { $_.name -match $msiPattern } | Select-Object -First 1
 
     $ok = $false
 

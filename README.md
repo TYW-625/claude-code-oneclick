@@ -15,7 +15,7 @@ Git → VS Code → Claude Code → CC Switch（换第三方模型）。
 
 | 组件 | 作用 | 来源 |
 |---|---|---|
-| Git | Claude Code 用它做版本管理、回退改动 | winget / GitHub Release（镜像兜底） |
+| Git | Claude Code 用它做版本管理、回退改动 | 华为云镜像（MinGit 便携版，免管理员） |
 | VS Code | 写代码和运行 Claude Code 扩展的编辑器 | winget / 官方安装包 |
 | Claude Code 扩展 | 你日常使用的 Claude Code 界面 | VS Code 扩展市场 |
 | CC Switch | 可视化切换 DeepSeek、Kimi、MiniMax 等供应商 | GitHub Release（便携版优先，需 4.0.0+） |
@@ -123,6 +123,15 @@ Windows 首次运行可能被 SmartScreen 拦截，点“更多信息 → 仍要
 | CC Switch | 删除 `%LOCALAPPDATA%\Programs\CC Switch` 和开始菜单快捷方式 |
 
 ## 更新日志
+
+### v1.0.2（2026-10-21）
+
+**全流程改为免管理员安装**，并修掉一个必然装错架构的硬伤。
+
+- **Git 改走华为云镜像 + MinGit 便携版**。此前从 GitHub Release 下载安装包，国内普遍失败，而且安装程序需要管理员权限。现在下载 `MinGit-*-64-bit.zip`，解压到 `%LOCALAPPDATA%\Programs\Git` 并写入用户 PATH，全程不弹 UAC。
+- **修复 CC Switch 在 x64 电脑上下 ARM64 包**。此前用 `Windows.*Portable` 通配后取第一个匹配项，而发布页里 arm64 排在最前，所以 x64 机器必定下到 arm64 版本，装了也跑不起来。现在按 `PROCESSOR_ARCHITECTURE` 精确匹配架构。
+- **修复 VS Code 已装成功却报失败**。winget 显示安装成功后，`code.cmd` 落盘还有延迟，脚本立刻判断就找不到命令，还误报成「winget 没有装上」。现在会重试约 12 秒，文案也改成「未找到 code 命令」。
+- 安装 CC Switch 便携版、VS Code 用户安装、VS Code 扩展安装均不需要管理员权限。
 
 ### v1.0.1（2026-10-21）
 
