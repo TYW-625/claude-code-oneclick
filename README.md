@@ -18,7 +18,7 @@ Git → VS Code → Claude Code → CC Switch（换第三方模型）。
 | Git | Claude Code 用它做版本管理、回退改动 | winget / GitHub Release（镜像兜底） |
 | VS Code | 写代码和运行 Claude Code 扩展的编辑器 | winget / 官方安装包 |
 | Claude Code 扩展 | 你日常使用的 Claude Code 界面 | VS Code 扩展市场 |
-| CC Switch | 可视化切换 DeepSeek、Kimi、MiniMax 等供应商 | GitHub Release（便携版优先） |
+| CC Switch | 可视化切换 DeepSeek、Kimi、MiniMax 等供应商 | GitHub Release（便携版优先，需 4.0.0+） |
 
 默认装的是 **VS Code 扩展**。扩展自带一份 Claude Code，不需要 Node.js。
 如果你还想在任意终端里直接敲 `claude`，运行脚本时加 `-WithCLI`。
@@ -121,6 +121,21 @@ Windows 首次运行可能被 SmartScreen 拦截，点“更多信息 → 仍要
 | Claude Code 扩展 | VS Code 扩展面板 → 卸载 |
 | Claude Code CLI | 删除 `%USERPROFILE%\.local\bin\claude.exe` 及同目录相关文件 |
 | CC Switch | 删除 `%LOCALAPPDATA%\Programs\CC Switch` 和开始菜单快捷方式 |
+
+## 更新日志
+
+### v1.0.1（2026-10-21）
+
+修复「电脑上已经装过旧版 CC Switch」时最后一步接不上的问题。
+
+- **CC Switch 增加最低版本要求 4.0.0**。此前脚本只要发现电脑上装了 CC Switch 就直接跳过，只把版本号打印出来，从不比对；3.x 与 4.x 配置格式不兼容，装旧版会导致最后一步配不通。现在低于 4.0.0 会自动升级，版本号读不出来也会重装。
+- **下载改为镜像优先**。此前 GitHub 直连排在最前，受限网络下要挂满 180 秒才轮到镜像，表现就是「卡住不动」。现在 gh-proxy / ghproxy 优先，直连放到最后。
+- **下载超时从 180 秒降到 30 秒**，网络不通时快速失败并换下一个源。
+- **修复开始菜单快捷方式路径不一致**。创建时写到 `Programs\CC Switch.lnk`，查找时读的却是 `Programs\CC Switch\CC Switch.lnk`；升级后旧快捷方式仍指向旧版本。现在两个位置都会更新。
+
+### v1.0.0（2026-10-19）
+
+首个版本：Git → VS Code → Claude Code 扩展 → CC Switch。
 
 ## 许可
 

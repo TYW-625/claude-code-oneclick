@@ -51,6 +51,10 @@ $script:LogPath = Join-Path $env:TEMP ("claude-code-oneclick-{0:yyyyMMdd-HHmmss}
 $script:Results = New-Object System.Collections.ArrayList
 $script:HasFailure = $false
 
+# CC Switch 最低可用版本。低于此版本的已安装副本会被升级，而不是跳过。
+# 3.x 与 4.x 配置格式不兼容，装错版本会在最后一步接不上。
+$script:MinCCSwitchVersion = [version]'4.0.0'
+
 # ---------------------------------------------------------------- 输出与日志
 
 function Write-Ui {
@@ -156,10 +160,11 @@ function Get-GitHubRelease {
     param([string]$Repo)
 
     $api = "https://api.github.com/repos/$Repo/releases/latest"
+    # 镜像优先：GitHub 直连在受限网络下会挂满超时，放在最后快速失败。
     $urls = @(
-        $api,
         "https://gh-proxy.com/$api",
-        "https://ghproxy.net/$api"
+        "https://ghproxy.net/$api",
+        $api
     )
     foreach ($u in $urls) {
         try {
@@ -173,10 +178,11 @@ function Get-GitHubRelease {
 function Get-AssetUrls {
     param($Asset)
     $base = $Asset.browser_download_url
+    # 镜像优先：受限网络下 GitHub 直连会长时间挂起，放最后。
     return @(
-        $base,
         "https://gh-proxy.com/$base",
-        "https://ghproxy.net/$base"
+        "https://ghproxy.net/$base",
+        $base
     )
 }
 
@@ -186,7 +192,7 @@ function Save-FileWithMirrors {
     foreach ($u in $Urls) {
         try {
             Write-Info ("下载: " + $u)
-            Invoke-WebRequest -Uri $u -OutFile $Destination -UseBasicParsing -TimeoutSec 180
+            Invoke-WebRequest -Uri $u -OutFile $Destination -UseBasicParsing -TimeoutSec 30
             if ((Test-Path $Destination) -and ((Get-Item $Destination).Length -gt 1024)) {
                 return $true
             }
@@ -470,29 +476,62 @@ function New-CCSwitchShortcut {
         New-Item -ItemType Directory -Path $menuDir -Force | Out-Null
     }
 
-    $lnkPath = Join-Path $menuDir 'CC Switch.lnk'
+    # 两个位置都写：
+    #  1) Programs\CC Switch\CC Switch.lnk —— Get-CCSwitchExe 的兜底查找路径
+    #  2) Programs\CC Switch.lnk         —— 老版本脚本留下的位置
+    # 一并覆盖，避免升级后旧快捷方式还指向旧 exe。
+    $targets = @(
+        (Join-Path $menuDir 'CC Switch\CC Switch.lnk'),
+        (Join-Path $menuDir 'CC Switch.lnk')
+    )
+
     $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($lnkPath)
-    $shortcut.TargetPath = $ExePath
-    $shortcut.WorkingDirectory = Split-Path -Parent $ExePath
-    $shortcut.Description = 'CC Switch - Claude Code 供应商切换器'
-    $shortcut.Save()
-    Write-Ok ('已创建开始菜单快捷方式: ' + $lnkPath)
+    foreach ($lnkPath in $targets) {
+        $dir = Split-Path -Parent $lnkPath
+        if (-not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+        $shortcut = $shell.CreateShortcut($lnkPath)
+        $shortcut.TargetPath = $ExePath
+        $shortcut.WorkingDirectory = Split-Path -Parent $ExePath
+        $shortcut.Description = 'CC Switch - Claude Code 供应商切换器'
+        $shortcut.Save()
+        Write-Ok ('已更新开始菜单快捷方式: ' + $lnkPath)
+    }
 }
 
 function Install-CCSwitch {
     $exe = Get-CCSwitchExe
+    $version = ''
+    $installed = $null
+
     if ($exe) {
-        $version = ''
         try { $version = [string](Get-Item $exe).VersionInfo.ProductVersion } catch { }
-        Write-Ok ('已安装，跳过: ' + $exe)
-        Add-Result 'CC Switch' '已安装' $version $exe
-        return $true
+        if ($version) {
+            try { $installed = [version]$version } catch { $installed = $null }
+        }
+
+        if ($installed -and $installed -ge $script:MinCCSwitchVersion) {
+            Write-Ok ('已安装且版本合格，跳过: CC Switch ' + $version)
+            Add-Result 'CC Switch' '已安装' $version $exe
+            return $true
+        }
+
+        if ($installed) {
+            Write-Warn ('CC Switch ' + $version + ' 低于最低要求 ' + $script:MinCCSwitchVersion + '，将升级')
+        } else {
+            Write-Warn '无法识别已安装 CC Switch 的版本，将重新安装'
+        }
     }
 
     if (Test-DryRun) {
-        Write-Info '未检测到 CC Switch，将尝试安装'
-        Add-Result 'CC Switch' '待安装' '' ''
+        if ($exe) {
+            Write-Info ('将升级 CC Switch ' + $version + ' -> 最新版')
+            Add-Result 'CC Switch' '待升级' $version $exe
+        } else {
+            Write-Info '未检测到 CC Switch，将尝试安装'
+            Add-Result 'CC Switch' '待安装' '' ''
+        }
         return $true
     }
 
